@@ -1,66 +1,75 @@
-# 🏋️‍♂️ IRONLOG - Gym Tracker
+# IronLog - Gym Tracker Pro 🏋️‍♂️💪
 
-**IRONLOG** es una aplicación de seguimiento de entrenamiento diseñada para entusiastas del fitness que buscan una herramienta minimalista, potente y visualmente impactante para registrar sus progresos en el gimnasio.
-
-![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
-![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
-![SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg?style=for-the-badge&logo=sqlite&logoColor=white)
+**IronLog** es una aplicación de seguimiento de entrenamiento diseñada para entusiastas del fitness que buscan una herramienta profesional, rápida y visualmente impactante. Este proyecto ha sido desarrollado con **Flutter** y **SQLite**, enfocándose en la experiencia de usuario (UX) y el análisis de datos de progreso.
 
 ---
 
-## ✨ Características Principales
+## 🔥 Características Principales
 
--   **📅 Seguimiento Diario:** Organiza tus rutinas por días de la semana con una interfaz fluida e intuitiva.
--   **📚 Biblioteca de Ejercicios:** Incluye una amplia base de datos de ejercicios maestros categorizados por grupos musculares (Pecho, Espalda, Piernas, etc.).
--   **📊 Registro Detallado:** Controla peso, repeticiones y series para cada ejercicio.
--   **📓 Notas y Detalles:** Añade anotaciones específicas a cada ejercicio para no olvidar ningún detalle de tu técnica o sensaciones.
--   **🌑 Estética "Dark Premium":** Interfaz moderna en modo oscuro con acentos de alto contraste en amarillo neón, diseñada para no cansar la vista durante el entrenamiento.
--   **💾 Almacenamiento Local:** Tus datos se guardan de forma segura en tu dispositivo mediante SQLite, permitiendo el uso offline sin interrupciones.
+### 📈 Visualización de Progreso
+*   **Gráficas Dinámicas:** Visualiza tu evolución de fuerza con gráficas de línea integradas al final de cada ejercicio (usando `fl_chart`).
+*   **Récord Personal (PR):** La app detecta y destaca automáticamente tu mejor levantamiento histórico con una insignia especial.
+*   **Volumen de Entrenamiento:** Cálculo en tiempo real del volumen total (Peso x Reps) por sesión para optimizar la hipertrofia.
 
-## 📸 Capturas de Pantalla
+### 📅 Navegación Semanal Infinita
+*   **Calendario Táctil:** Desliza lateralmente para navegar entre días o usa el selector de semanas para consultar entrenamientos pasados o planificar futuros.
+*   **Persistencia Temporal:** Cada entrenamiento queda vinculado a su fecha exacta en el calendario.
 
-*(Próximamente)*
-> **Nota:** Puedes añadir tus capturas de pantalla aquí arrastrándolas a la carpeta `assets/screenshots` y vinculándolas.
+### 📋 Gestión de Rutinas e Inteligencia
+*   **Plantillas de Rutina:** Crea tus propias rutinas y "impórtalas" en cualquier día con un solo toque. Ideal para repetir tus días de Empuje/Tracción/Pierna.
+*   **Creación On-the-fly:** Crea nuevos ejercicios personalizados directamente mientras armas tu rutina.
+*   **Auto-Save Pro:** Olvídate de los botones de guardar. La aplicación persiste tus datos automáticamente al salir de la pantalla.
+
+### 🛠️ Herramientas de Precisión
+*   **Selector de Unidades:** Soporte nativo para **KG** y **LB** con guardado de preferencia.
+*   **Ajustes Rápidos:** Botones de +/- 5 para peso y +/- 1 para repeticiones que agilizan la entrada de datos durante el descanso.
+*   **Cronómetro Integrado:** Timer flotante en pantalla para controlar tus tiempos de descanso con precisión.
+
+---
+
+## 🛠️ Stack Tecnológico
+
+*   **Framework:** [Flutter](https://flutter.dev/) (Dart)
+*   **Base de Datos:** [Sqflite](https://pub.dev/packages/sqflite) (SQLite local)
+*   **Gráficas:** [fl_chart](https://pub.dev/packages/fl_chart)
+*   **Estado & Persistencia:** [Shared Preferences](https://pub.dev/packages/shared_preferences)
+*   **Feedback:** Haptic Feedback para una experiencia táctil premium.
+
+---
 
 ## 🚀 Instalación y Uso
 
-Para ejecutar este proyecto localmente, asegúrate de tener instalado el [Flutter SDK](https://docs.flutter.dev/get-started/install).
-
-1.  **Clona el repositorio:**
-    ```bash
-    git clone https://github.com/tu-usuario/app_gym.git
-    cd app_gym
-    ```
-
-2.  **Instala las dependencias:**
-    ```bash
-    flutter pub get
-    ```
-
-3.  **Ejecuta la aplicación:**
-    ```bash
-    flutter run
-    ```
-
-## 🛠️ Tecnologías Utilizadas
-
--   **Framework:** [Flutter](https://flutter.dev/)
--   **Lenguaje:** [Dart](https://dart.dev/)
--   **Base de Datos:** [sqflite](https://pub.dev/packages/sqflite) (SQLite para Flutter)
--   **Iconografía:** [Cupertino Icons](https://pub.dev/packages/cupertino_icons)
+1. **Clonar el repositorio:**
+   ```bash
+   git clone https://github.com/tu-usuario/ironlog-gym-tracker.git
+   ```
+2. **Instalar dependencias:**
+   ```bash
+   flutter pub get
+   ```
+3. **Ejecutar en modo Debug:**
+   ```bash
+   flutter run
+   ```
+4. **Generar APK de producción:**
+   ```bash
+   flutter build apk --release
+   ```
 
 ---
 
-## 🤝 Contribuciones
+## 🎯 Objetivo del Proyecto
 
-Las contribuciones son bienvenidas. Si tienes ideas para nuevas funciones o mejoras, no dudes en abrir un *issue* o enviar un *pull request*.
-
-1.  Haz un Fork del proyecto.
-2.  Crea una rama para tu función (`git checkout -b feature/NuevaFuncion`).
-3.  Haz un commit de tus cambios (`git commit -m 'Añadir nueva función'`).
-4.  Sube tus cambios (`git push origin feature/NuevaFuncion`).
-5.  Abre un Pull Request.
+Este proyecto fue creado para demostrar habilidades avanzadas en:
+1.  **Gestión de Bases de Datos Relacionales:** Esquemas complejos, migraciones y consultas históricas.
+2.  **Arquitectura Limpia:** Separación de lógica de negocio, servicios y UI.
+3.  **UI/UX Avanzada:** Implementación de animaciones, gestos táctiles y visualización de datos compleja.
+4.  **Optimización de Rendimiento:** Caching de datos y manejo eficiente del ciclo de vida de la aplicación.
 
 ---
 
-Desarrollado con 💪 por [Sebastian]
+## 📸 Capturas de Pantalla (Opcional)
+> *Sugerencia: Añade aquí capturas de la Pantalla Principal, el Sistema de Rutinas y la Gráfica de Progreso.*
+
+---
+Desarrollado por [Tu Nombre] - 2026

@@ -2,51 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../db/database_helper.dart';
 import '../models/ejercicio_maestro.dart';
+import '../models/ejercicio.dart';
+import '../services/settings_service.dart';
 import 'detalle_ejercicio.dart';
-
-class Ejercicio {
-  final String id;
-  String nombre;
-  double peso;
-  int repeticiones;
-  int series;
-  int dia;
-  String? detalles;
-
-  Ejercicio({
-    required this.id,
-    required this.nombre,
-    required this.peso,
-    required this.repeticiones,
-    this.series = 1,
-    required this.dia,
-    this.detalles,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'nombre': nombre,
-      'peso': peso,
-      'repeticiones': repeticiones,
-      'series': series,
-      'dia': dia,
-      'detalles': detalles,
-    };
-  }
-
-  factory Ejercicio.fromMap(Map<String, dynamic> map) {
-    return Ejercicio(
-      id: map['id'],
-      nombre: map['nombre'],
-      peso: (map['peso'] as num).toDouble(),
-      repeticiones: map['repeticiones'],
-      series: map['series'],
-      dia: map['dia'],
-      detalles: map['detalles'],
-    );
-  }
-}
 
 class PantallaPrincipal extends StatefulWidget {
   const PantallaPrincipal({super.key});
@@ -57,14 +15,15 @@ class PantallaPrincipal extends StatefulWidget {
 
 class _PantallaPrincipalState extends State<PantallaPrincipal>
     with TickerProviderStateMixin {
-  late int _diaSeleccionado;
+  late DateTime _fechaSeleccionada;
   late AnimationController _headerAnimController;
   late AnimationController _fabAnimController;
   late Animation<double> _headerFade;
   late Animation<Offset> _headerSlide;
   late Animation<double> _fabScale;
+  String _unit = 'kg';
 
-  final Map<int, List<Ejercicio>> _ejerciciosPorDia = {};
+  final Map<String, List<Ejercicio>> _ejerciciosCache = {};
 
   static const List<String> _diasCompletos = [
     'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'
@@ -77,18 +36,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
     'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
   ];
 
-  String _obtenerFechaCompleta(int indexDia) {
-    final ahora = DateTime.now();
-    final lunesDeEstaSemana = ahora.subtract(Duration(days: ahora.weekday - 1));
-    final fechaSeleccionada = lunesDeEstaSemana.add(Duration(days: indexDia));
-    
-    return '${_diasCompletos[indexDia]} ${fechaSeleccionada.day} ${_meses[fechaSeleccionada.month - 1]} ${fechaSeleccionada.year}';
+  String _formatearFecha(DateTime fecha) {
+    return '${_diasCompletos[fecha.weekday - 1]} ${fecha.day} ${_meses[fecha.month - 1]} ${fecha.year}';
   }
 
   @override
   void initState() {
     super.initState();
-    _diaSeleccionado = (DateTime.now().weekday - 1).clamp(0, 6);
+    _fechaSeleccionada = DateTime.now();
 
     _headerAnimController = AnimationController(
       vsync: this,
@@ -112,6 +67,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
       CurvedAnimation(parent: _fabAnimController, curve: Curves.elasticOut),
     );
 
+    _cargarConfig();
     _cargarEjercicios();
     _headerAnimController.forward();
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -119,11 +75,18 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
     });
   }
 
+  Future<void> _cargarConfig() async {
+    final unit = await SettingsService.instance.getUnit();
+    if (mounted) setState(() => _unit = unit);
+  }
+
   Future<void> _cargarEjercicios() async {
-    final data = await DatabaseHelper.instance.readAllByDia(_diaSeleccionado);
-    setState(() {
-      _ejerciciosPorDia[_diaSeleccionado] = data;
-    });
+    final data = await DatabaseHelper.instance.readAllByFecha(_fechaSeleccionada);
+    if (mounted) {
+      setState(() {
+        _ejerciciosCache[_fechaSeleccionada.toIso8601String().split('T')[0]] = data;
+      });
+    }
   }
 
   @override
@@ -134,14 +97,25 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
   }
 
   List<Ejercicio> get _ejerciciosHoy =>
-      _ejerciciosPorDia[_diaSeleccionado] ?? [];
+      _ejerciciosCache[_fechaSeleccionada.toIso8601String().split('T')[0]] ?? [];
 
-  void _cambiarDia(int nuevoDia) {
-    if (nuevoDia == _diaSeleccionado) return;
+  void _cambiarFecha(DateTime nuevaFecha) {
+    if (DateUtils.isSameDay(nuevaFecha, _fechaSeleccionada)) return;
     HapticFeedback.selectionClick();
     _headerAnimController.forward(from: 0);
-    setState(() => _diaSeleccionado = nuevoDia);
+    setState(() => _fechaSeleccionada = nuevaFecha);
     _cargarEjercicios();
+  }
+
+  void _cambiarSemana(int delta) {
+    _cambiarFecha(_fechaSeleccionada.add(Duration(days: delta * 7)));
+  }
+
+  void _toggleUnit() async {
+    final newUnit = _unit == 'kg' ? 'lb' : 'kg';
+    await SettingsService.instance.setUnit(newUnit);
+    setState(() => _unit = newUnit);
+    HapticFeedback.mediumImpact();
   }
 
   void _abrirModalAgregar() {
@@ -158,9 +132,38 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
             peso: 0,
             repeticiones: 0,
             series: 0,
-            dia: _diaSeleccionado,
+            dia: _fechaSeleccionada.weekday - 1,
+            fecha: _fechaSeleccionada,
           );
           await DatabaseHelper.instance.insert(nuevoEjercicio);
+          _cargarEjercicios();
+        },
+      ),
+    );
+  }
+
+  void _abrirModalRutinas() {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111111),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _ModalGestionarRutinas(
+        onImportar: (ejercicios) async {
+          for (var nombre in ejercicios) {
+            final nuevo = Ejercicio(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              nombre: nombre,
+              peso: 0,
+              repeticiones: 0,
+              series: 0,
+              dia: _fechaSeleccionada.weekday - 1,
+              fecha: _fechaSeleccionada,
+            );
+            await DatabaseHelper.instance.insert(nuevo);
+            await Future.delayed(const Duration(milliseconds: 1));
+          }
           _cargarEjercicios();
         },
       ),
@@ -198,7 +201,18 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
             _buildHeader(),
             _buildSelectorDias(),
             const SizedBox(height: 8),
-            Expanded(child: _buildListaEjercicios()),
+            Expanded(
+              child: GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity! > 0) {
+                    _cambiarFecha(_fechaSeleccionada.subtract(const Duration(days: 1)));
+                  } else if (details.primaryVelocity! < 0) {
+                    _cambiarFecha(_fechaSeleccionada.add(const Duration(days: 1)));
+                  }
+                },
+                child: _buildListaEjercicios(),
+              ),
+            ),
           ],
         ),
       ),
@@ -224,35 +238,90 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE8FF00),
-                      shape: BoxShape.circle,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE8FF00),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'IRONLOG',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          letterSpacing: 3,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'IRONLOG',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      letterSpacing: 3,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      _buildBotonAccion(
+                        icon: Icons.assignment_rounded,
+                        label: 'RUTINAS',
+                        onTap: _abrirModalRutinas,
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: _toggleUnit,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF161616),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF2A2A2A)),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                _unit.toUpperCase(),
+                                style: const TextStyle(color: Color(0xFFE8FF00), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.swap_horiz, color: Color(0xFF444444), size: 14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              Text(
-                _obtenerFechaCompleta(_diaSeleccionado),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      _formatearFecha(_fechaSeleccionada),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left, color: Color(0xFFE8FF00)),
+                        onPressed: () => _cambiarSemana(-1),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right, color: Color(0xFFE8FF00)),
+                        onPressed: () => _cambiarSemana(1),
+                      ),
+                    ],
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(
@@ -277,7 +346,33 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
     );
   }
 
+  Widget _buildBotonAccion({required IconData icon, required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8FF00).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE8FF00).withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFFE8FF00), size: 14),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(color: Color(0xFFE8FF00), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSelectorDias() {
+    final lunes = _fechaSeleccionada.subtract(Duration(days: _fechaSeleccionada.weekday - 1));
+    
     return SizedBox(
       height: 56,
       child: ListView.builder(
@@ -285,10 +380,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         itemCount: 7,
         itemBuilder: (context, index) {
-          final bool activo = index == _diaSeleccionado;
-          final bool hoy = index == (DateTime.now().weekday - 1).clamp(0, 6);
+          final dia = lunes.add(Duration(days: index));
+          final bool activo = DateUtils.isSameDay(dia, _fechaSeleccionada);
+          final bool hoy = DateUtils.isSameDay(dia, DateTime.now());
+          
           return GestureDetector(
-            onTap: () => _cambiarDia(index),
+            onTap: () => _cambiarFecha(dia),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeOutCubic,
@@ -307,16 +404,31 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
                 ),
               ),
               alignment: Alignment.center,
-              child: Text(
-                _diasCortos[index],
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
-                  color: activo
-                      ? const Color(0xFF0A0A0A)
-                      : const Color(0xFF666666),
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _diasCortos[index],
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                      color: activo
+                          ? const Color(0xFF0A0A0A)
+                          : const Color(0xFF666666),
+                    ),
+                  ),
+                  Text(
+                    '${dia.day}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: activo
+                          ? const Color(0xFF0A0A0A)
+                          : const Color(0xFF444444),
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -337,6 +449,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
         return _TarjetaEjercicio(
           ejercicio: ejercicio,
           index: index,
+          unit: _unit,
           onEliminar: () => _eliminarEjercicio(ejercicio.id),
           onTap: () => _abrirModalEditar(ejercicio),
         );
@@ -374,7 +487,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Toca + para agregar tu primer\nejercicio del día',
+            'Toca + para agregar un ejercicio\no usa una RUTINA para importar varias',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFF333333),
@@ -390,12 +503,14 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
 class _TarjetaEjercicio extends StatefulWidget {
   final Ejercicio ejercicio;
   final int index;
+  final String unit;
   final VoidCallback onEliminar;
   final VoidCallback onTap;
 
   const _TarjetaEjercicio({
     required this.ejercicio,
     required this.index,
+    required this.unit,
     required this.onEliminar,
     required this.onTap,
   });
@@ -495,7 +610,7 @@ class _TarjetaEjercicioState extends State<_TarjetaEjercicio>
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            _Chip(label: '${widget.ejercicio.peso} kg'),
+                            _Chip(label: '${widget.ejercicio.peso} ${widget.unit}'),
                             const SizedBox(width: 8),
                             _Chip(label: '${widget.ejercicio.repeticiones} reps'),
                             const SizedBox(width: 8),
@@ -541,6 +656,299 @@ class _Chip extends StatelessWidget {
   }
 }
 
+class _ModalGestionarRutinas extends StatefulWidget {
+  final Function(List<String>) onImportar;
+  const _ModalGestionarRutinas({required this.onImportar});
+
+  @override
+  State<_ModalGestionarRutinas> createState() => _ModalGestionarRutinasState();
+}
+
+class _ModalGestionarRutinasState extends State<_ModalGestionarRutinas> {
+  List<Map<String, dynamic>> _rutinas = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarRutinas();
+  }
+
+  Future<void> _cargarRutinas() async {
+    final data = await DatabaseHelper.instance.readAllRutinas();
+    setState(() => _rutinas = data);
+  }
+
+  void _crearNuevaRutina() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ModalSeleccionarMultiplesEjercicios(
+        onFinalizar: (nombres) async {
+          if (nombres.isEmpty) return;
+          
+          String nombreRutina = '';
+          await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF111111),
+              title: const Text('NOMBRE DE RUTINA', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
+              content: TextField(
+                onChanged: (v) => nombreRutina = v,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(hintText: 'Ej: Empuje A, Pierna...', hintStyle: TextStyle(color: Color(0xFF444444))),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR')),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8FF00)),
+                  child: const Text('GUARDAR', style: TextStyle(color: Color(0xFF0A0A0A))),
+                ),
+              ],
+            ),
+          );
+
+          if (nombreRutina.trim().isNotEmpty) {
+            await DatabaseHelper.instance.insertRutina(nombreRutina.trim(), nombres);
+            _cargarRutinas();
+          }
+        },
+      ),
+    );
+  }
+
+  void _eliminarRutina(String id) async {
+    await DatabaseHelper.instance.deleteRutina(id);
+    _cargarRutinas();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: const BoxDecoration(
+        color: Color(0xFF111111),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('MIS RUTINAS', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
+              IconButton(onPressed: _crearNuevaRutina, icon: const Icon(Icons.add_circle, color: Color(0xFFE8FF00))),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: _rutinas.isEmpty
+              ? const Center(child: Text('No tienes rutinas creadas', style: TextStyle(color: Color(0xFF444444))))
+              : ListView.builder(
+                  itemCount: _rutinas.length,
+                  itemBuilder: (context, i) {
+                    final r = _rutinas[i];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF161616),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                      ),
+                      child: ListTile(
+                        title: Text(r['nombre'].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Color(0xFF444444), size: 20),
+                              onPressed: () => _eliminarRutina(r['id']),
+                            ),
+                            const Icon(Icons.chevron_right, color: Color(0xFFE8FF00)),
+                          ],
+                        ),
+                        onTap: () async {
+                          final ejercicios = await DatabaseHelper.instance.readEjerciciosByRutina(r['id']);
+                          widget.onImportar(ejercicios);
+                          Navigator.pop(context);
+                        },
+                      ),
+                    );
+                  },
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModalSeleccionarMultiplesEjercicios extends StatefulWidget {
+  final Function(List<String>) onFinalizar;
+  const _ModalSeleccionarMultiplesEjercicios({required this.onFinalizar});
+
+  @override
+  State<_ModalSeleccionarMultiplesEjercicios> createState() => _ModalSeleccionarMultiplesEjerciciosState();
+}
+
+class _ModalSeleccionarMultiplesEjerciciosState extends State<_ModalSeleccionarMultiplesEjercicios> {
+  final List<String> _seleccionados = [];
+  String? _grupoSeleccionado;
+
+  void _mostrarDialogoNuevoEjercicio() {
+    String nuevoNombre = '';
+    String grupoSeleccionado = 'Pecho';
+    final grupos = ['Pecho', 'Espalda', 'Hombro', 'Tríceps', 'Bíceps', 'Pierna', 'Abs'];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF111111),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFF1E1E1E))),
+          title: const Text('NUEVO EJERCICIO', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                onChanged: (v) => nuevoNombre = v,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Nombre del ejercicio...',
+                  hintStyle: const TextStyle(color: Color(0xFF444444)),
+                  filled: true,
+                  fillColor: const Color(0xFF0A0A0A),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text('GRUPO MUSCULAR', style: TextStyle(color: Color(0xFF888888), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A0A0A),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: grupoSeleccionado,
+                    dropdownColor: const Color(0xFF111111),
+                    isExpanded: true,
+                    style: const TextStyle(color: Colors.white),
+                    items: grupos.map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase(), style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) => setDialogState(() => grupoSeleccionado = v!),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF555555), fontWeight: FontWeight.bold)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nuevoNombre.trim().isNotEmpty) {
+                  setState(() {
+                    _seleccionados.add(nuevoNombre.trim());
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE8FF00),
+                foregroundColor: const Color(0xFF0A0A0A),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('AGREGAR', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, List<EjercicioMaestro>> agrupados = {};
+    for (var e in LISTA_EJERCICIOS_MAESTRA) {
+      agrupados.putIfAbsent(e.grupoMuscular, () => []).add(e);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(color: Color(0xFF111111), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      height: MediaQuery.of(context).size.height * 0.8,
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_grupoSeleccionado ?? 'SELECCIONA EJERCICIOS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: _mostrarDialogoNuevoEjercicio,
+                    icon: const Icon(Icons.add_box_rounded, color: Color(0xFFE8FF00)),
+                    tooltip: 'CREAR EJERCICIO',
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      widget.onFinalizar(_seleccionados);
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8FF00)),
+                    child: Text('LISTO (${_seleccionados.length})', style: const TextStyle(color: Color(0xFF0A0A0A), fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: _grupoSeleccionado == null
+              ? ListView(
+                  children: agrupados.keys.map((g) => ListTile(
+                    title: Text(g.toUpperCase(), style: const TextStyle(color: Colors.white)),
+                    onTap: () => setState(() => _grupoSeleccionado = g),
+                    trailing: const Icon(Icons.chevron_right, color: Color(0xFF444444)),
+                  )).toList(),
+                )
+              : ListView(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.arrow_back, color: Color(0xFFE8FF00)),
+                      title: const Text('VOLVER', style: TextStyle(color: Color(0xFFE8FF00))),
+                      onTap: () => setState(() => _grupoSeleccionado = null),
+                    ),
+                    ...agrupados[_grupoSeleccionado]!.map((e) => CheckboxListTile(
+                      value: _seleccionados.contains(e.nombre),
+                      title: Text(e.nombre, style: const TextStyle(color: Colors.white)),
+                      onChanged: (v) {
+                        setState(() {
+                          if (v!) _seleccionados.add(e.nombre);
+                          else _seleccionados.remove(e.nombre);
+                        });
+                      },
+                      activeColor: const Color(0xFFE8FF00),
+                      checkColor: const Color(0xFF0A0A0A),
+                    )).toList(),
+                  ],
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ModalSeleccionarEjercicio extends StatefulWidget {
   final Function(String) onSeleccionado;
   const _ModalSeleccionarEjercicio({required this.onSeleccionado});
@@ -578,6 +986,7 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
             children: [
               TextField(
                 onChanged: (v) => nuevoNombre = v,
+                autofocus: true,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: 'Nombre del ejercicio...',
@@ -641,7 +1050,6 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
       agrupados.putIfAbsent(e.grupoMuscular, () => []).add(e);
     }
 
-    // Filtrar ejercicios si hay búsqueda
     List<EjercicioMaestro> filtrados = [];
     if (_searchQuery.isNotEmpty) {
       filtrados = LISTA_EJERCICIOS_MAESTRA
@@ -666,8 +1074,6 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
               decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
             ),
           ),
-          
-          // Buscador y Botón Agregar
           Row(
             children: [
               Expanded(
@@ -684,18 +1090,9 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'BUSCAR EJERCICIO...',
-                      hintStyle: TextStyle(color: const Color(0xFF555555), fontSize: 12, letterSpacing: 1.5),
+                      hintStyle: const TextStyle(color: Color(0xFF555555), fontSize: 12, letterSpacing: 1.5),
                       border: InputBorder.none,
                       icon: Icon(Icons.search, color: const Color(0xFFE8FF00).withOpacity(0.5), size: 20),
-                      suffixIcon: _searchQuery.isNotEmpty 
-                        ? IconButton(
-                            icon: const Icon(Icons.close, color: Color(0xFF555555), size: 16),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
                     ),
                   ),
                 ),
@@ -704,8 +1101,7 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
               GestureDetector(
                 onTap: _mostrarDialogoNuevoEjercicio,
                 child: Container(
-                  height: 48,
-                  width: 48,
+                  height: 48, width: 48,
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8FF00).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -717,7 +1113,6 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
             ],
           ),
           const SizedBox(height: 24),
-
           if (_searchQuery.isEmpty) ...[
             Row(
               children: [
@@ -734,7 +1129,6 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
             ),
             const SizedBox(height: 16),
           ],
-          
           Flexible(
             child: _searchQuery.isNotEmpty
                 ? ListView.builder(
@@ -743,7 +1137,6 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
                     itemBuilder: (context, i) => ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(filtrados[i].nombre, style: const TextStyle(color: Color(0xFFCCCCCC))),
-                      subtitle: Text(filtrados[i].grupoMuscular.toUpperCase(), style: const TextStyle(color: Color(0xFF555555), fontSize: 10, fontWeight: FontWeight.bold)),
                       onTap: () {
                         widget.onSeleccionado(filtrados[i].nombre);
                         Navigator.pop(context);
