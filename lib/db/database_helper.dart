@@ -20,7 +20,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -44,6 +44,14 @@ class DatabaseHelper {
           rutina_id TEXT NOT NULL,
           nombre_ejercicio TEXT NOT NULL,
           FOREIGN KEY (rutina_id) REFERENCES rutinas (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE ejercicios_maestros_custom (
+          nombre TEXT PRIMARY KEY,
+          grupo_muscular TEXT NOT NULL
         )
       ''');
     }
@@ -76,6 +84,13 @@ class DatabaseHelper {
         rutina_id TEXT NOT NULL,
         nombre_ejercicio TEXT NOT NULL,
         FOREIGN KEY (rutina_id) REFERENCES rutinas (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ejercicios_maestros_custom (
+        nombre TEXT PRIMARY KEY,
+        grupo_muscular TEXT NOT NULL
       )
     ''');
 
@@ -183,6 +198,23 @@ class DatabaseHelper {
     return await db.delete('rutinas', where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<void> updateRutina(String id, List<String> nuevosEjercicios) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      // Eliminar ejercicios actuales
+      await txn.delete('ejercicios_rutina', where: 'rutina_id = ?', whereArgs: [id]);
+      // Insertar los nuevos
+      for (var nombre in nuevosEjercicios) {
+        await txn.insert('ejercicios_rutina', {
+          'id': '${DateTime.now().millisecondsSinceEpoch}_$nombre',
+          'rutina_id': id,
+          'nombre_ejercicio': nombre,
+        });
+        await Future.delayed(const Duration(milliseconds: 1));
+      }
+    });
+  }
+
   Future<List<Ejercicio>> readHistoryByNombre(String nombre) async {
     final db = await instance.database;
     final result = await db.query(
@@ -211,5 +243,20 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [ejercicio.id],
     );
+  }
+
+  // Ejercicios Maestros Custom
+  Future<int> insertEjercicioMaestroCustom(String nombre, String grupoMuscular) async {
+    final db = await instance.database;
+    return await db.insert(
+      'ejercicios_maestros_custom',
+      {'nombre': nombre, 'grupo_muscular': grupoMuscular},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> readAllEjerciciosMaestrosCustom() async {
+    final db = await instance.database;
+    return await db.query('ejercicios_maestros_custom');
   }
 }

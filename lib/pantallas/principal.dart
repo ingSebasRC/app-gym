@@ -150,6 +150,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
       backgroundColor: const Color(0xFF111111),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _ModalGestionarRutinas(
+        soloGestion: false,
         onImportar: (ejercicios) async {
           for (var nombre in ejercicios) {
             final nuevo = Ejercicio(
@@ -166,6 +167,19 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
           }
           _cargarEjercicios();
         },
+      ),
+    );
+  }
+
+  void _abrirModalGestionarRutinas() {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111111),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => _ModalGestionarRutinas(
+        soloGestion: true,
       ),
     );
   }
@@ -218,10 +232,40 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
       ),
       floatingActionButton: ScaleTransition(
         scale: _fabScale,
-        child: FloatingActionButton(
-          onPressed: _abrirModalAgregar,
-          backgroundColor: const Color(0xFFE8FF00),
-          child: const Icon(Icons.add, size: 28, color: Color(0xFF0A0A0A)),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 32),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              FloatingActionButton.extended(
+                heroTag: 'import_routine',
+                onPressed: _abrirModalRutinas,
+                backgroundColor: const Color(0xFF161616),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: const Color(0xFFE8FF00).withOpacity(0.3)),
+                ),
+                label: const Text(
+                  'IMPORTAR',
+                  style: TextStyle(
+                    color: Color(0xFFE8FF00),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                icon: const Icon(Icons.download_rounded, color: Color(0xFFE8FF00), size: 20),
+              ),
+              const SizedBox(width: 12),
+              FloatingActionButton(
+                heroTag: 'add_exercise',
+                onPressed: _abrirModalAgregar,
+                backgroundColor: const Color(0xFFE8FF00),
+                child: const Icon(Icons.add, size: 28, color: Color(0xFF0A0A0A)),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -267,7 +311,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal>
                       _buildBotonAccion(
                         icon: Icons.assignment_rounded,
                         label: 'RUTINAS',
-                        onTap: _abrirModalRutinas,
+                        onTap: _abrirModalGestionarRutinas,
                       ),
                       const SizedBox(width: 12),
                       GestureDetector(
@@ -657,8 +701,9 @@ class _Chip extends StatelessWidget {
 }
 
 class _ModalGestionarRutinas extends StatefulWidget {
-  final Function(List<String>) onImportar;
-  const _ModalGestionarRutinas({required this.onImportar});
+  final bool soloGestion;
+  final Function(List<String>)? onImportar;
+  const _ModalGestionarRutinas({this.soloGestion = false, this.onImportar});
 
   @override
   State<_ModalGestionarRutinas> createState() => _ModalGestionarRutinasState();
@@ -679,41 +724,77 @@ class _ModalGestionarRutinasState extends State<_ModalGestionarRutinas> {
   }
 
   void _crearNuevaRutina() {
+    String nombreRutina = '';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF111111),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFF1E1E1E))),
+        title: const Text('NOMBRE DE LA RUTINA', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+        content: TextField(
+          onChanged: (v) => nombreRutina = v,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Ej: Upper Day, Pierna...',
+            hintStyle: const TextStyle(color: Color(0xFF444444)),
+            filled: true,
+            fillColor: const Color(0xFF0A0A0A),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF555555), fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (nombreRutina.trim().isEmpty) return;
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE8FF00),
+              foregroundColor: const Color(0xFF0A0A0A),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('CONTINUAR', style: TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    ).then((confirmado) {
+      if (confirmado == true) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => _ModalSeleccionarMultiplesEjercicios(
+            titulo: nombreRutina.toUpperCase(),
+            onFinalizar: (nombres) async {
+              if (nombres.isEmpty) return;
+              await DatabaseHelper.instance.insertRutina(nombreRutina.trim(), nombres);
+              _cargarRutinas();
+            },
+          ),
+        );
+      }
+    });
+  }
+
+  void _editarRutina(String id, String nombreActual) async {
+    final actuales = await DatabaseHelper.instance.readEjerciciosByRutina(id);
+    if (!mounted) return;
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _ModalSeleccionarMultiplesEjercicios(
-        onFinalizar: (nombres) async {
-          if (nombres.isEmpty) return;
-          
-          String nombreRutina = '';
-          await showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF111111),
-              title: const Text('NOMBRE DE RUTINA', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-              content: TextField(
-                onChanged: (v) => nombreRutina = v,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(hintText: 'Ej: Empuje A, Pierna...', hintStyle: TextStyle(color: Color(0xFF444444))),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR')),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8FF00)),
-                  child: const Text('GUARDAR', style: TextStyle(color: Color(0xFF0A0A0A))),
-                ),
-              ],
-            ),
-          );
-
-          if (nombreRutina.trim().isNotEmpty) {
-            await DatabaseHelper.instance.insertRutina(nombreRutina.trim(), nombres);
-            _cargarRutinas();
-          }
+        titulo: 'EDITAR: ${nombreActual.toUpperCase()}',
+        seleccionadosIniciales: actuales,
+        onFinalizar: (nuevos) async {
+          await DatabaseHelper.instance.updateRutina(id, nuevos);
+          _cargarRutinas();
         },
       ),
     );
@@ -739,8 +820,12 @@ class _ModalGestionarRutinasState extends State<_ModalGestionarRutinas> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('MIS RUTINAS', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              IconButton(onPressed: _crearNuevaRutina, icon: const Icon(Icons.add_circle, color: Color(0xFFE8FF00))),
+              Text(
+                widget.soloGestion ? 'GESTIONAR RUTINAS' : 'IMPORTAR RUTINA',
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2),
+              ),
+              if (widget.soloGestion)
+                IconButton(onPressed: _crearNuevaRutina, icon: const Icon(Icons.add_circle, color: Color(0xFFE8FF00))),
             ],
           ),
           const SizedBox(height: 20),
@@ -763,18 +848,26 @@ class _ModalGestionarRutinasState extends State<_ModalGestionarRutinas> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (widget.soloGestion)
+                              IconButton(
+                                icon: const Icon(Icons.edit_note_rounded, color: Color(0xFFE8FF00), size: 22),
+                                onPressed: () => _editarRutina(r['id'], r['nombre']),
+                              ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, color: Color(0xFF444444), size: 20),
                               onPressed: () => _eliminarRutina(r['id']),
                             ),
-                            const Icon(Icons.chevron_right, color: Color(0xFFE8FF00)),
+                            if (!widget.soloGestion)
+                              const Icon(Icons.download_rounded, color: Color(0xFFE8FF00)),
                           ],
                         ),
-                        onTap: () async {
-                          final ejercicios = await DatabaseHelper.instance.readEjerciciosByRutina(r['id']);
-                          widget.onImportar(ejercicios);
-                          Navigator.pop(context);
-                        },
+                        onTap: widget.soloGestion 
+                          ? () => _editarRutina(r['id'], r['nombre'])
+                          : () async {
+                              final ejercicios = await DatabaseHelper.instance.readEjerciciosByRutina(r['id']);
+                              widget.onImportar!(ejercicios);
+                              Navigator.pop(context);
+                            },
                       ),
                     );
                   },
@@ -787,180 +880,40 @@ class _ModalGestionarRutinasState extends State<_ModalGestionarRutinas> {
 }
 
 class _ModalSeleccionarMultiplesEjercicios extends StatefulWidget {
+  final String? titulo;
+  final List<String>? seleccionadosIniciales;
   final Function(List<String>) onFinalizar;
-  const _ModalSeleccionarMultiplesEjercicios({required this.onFinalizar});
+  const _ModalSeleccionarMultiplesEjercicios({this.titulo, this.seleccionadosIniciales, required this.onFinalizar});
 
   @override
   State<_ModalSeleccionarMultiplesEjercicios> createState() => _ModalSeleccionarMultiplesEjerciciosState();
 }
 
 class _ModalSeleccionarMultiplesEjerciciosState extends State<_ModalSeleccionarMultiplesEjercicios> {
-  final List<String> _seleccionados = [];
-  String? _grupoSeleccionado;
-
-  void _mostrarDialogoNuevoEjercicio() {
-    String nuevoNombre = '';
-    String grupoSeleccionado = 'Pecho';
-    final grupos = ['Pecho', 'Espalda', 'Hombro', 'Tríceps', 'Bíceps', 'Pierna', 'Abs'];
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF111111),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFF1E1E1E))),
-          title: const Text('NUEVO EJERCICIO', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                onChanged: (v) => nuevoNombre = v,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Nombre del ejercicio...',
-                  hintStyle: const TextStyle(color: Color(0xFF444444)),
-                  filled: true,
-                  fillColor: const Color(0xFF0A0A0A),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text('GRUPO MUSCULAR', style: TextStyle(color: Color(0xFF888888), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0A0A0A),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: grupoSeleccionado,
-                    dropdownColor: const Color(0xFF111111),
-                    isExpanded: true,
-                    style: const TextStyle(color: Colors.white),
-                    items: grupos.map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase(), style: const TextStyle(fontSize: 12)))).toList(),
-                    onChanged: (v) => setDialogState(() => grupoSeleccionado = v!),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF555555), fontWeight: FontWeight.bold)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (nuevoNombre.trim().isNotEmpty) {
-                  setState(() {
-                    _seleccionados.add(nuevoNombre.trim());
-                  });
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE8FF00),
-                foregroundColor: const Color(0xFF0A0A0A),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('AGREGAR', style: TextStyle(fontWeight: FontWeight.w900)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final Map<String, List<EjercicioMaestro>> agrupados = {};
-    for (var e in LISTA_EJERCICIOS_MAESTRA) {
-      agrupados.putIfAbsent(e.grupoMuscular, () => []).add(e);
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(color: Color(0xFF111111), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      height: MediaQuery.of(context).size.height * 0.8,
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(_grupoSeleccionado ?? 'SELECCIONA EJERCICIOS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: _mostrarDialogoNuevoEjercicio,
-                    icon: const Icon(Icons.add_box_rounded, color: Color(0xFFE8FF00)),
-                    tooltip: 'CREAR EJERCICIO',
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      widget.onFinalizar(_seleccionados);
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8FF00)),
-                    child: Text('LISTO (${_seleccionados.length})', style: const TextStyle(color: Color(0xFF0A0A0A), fontWeight: FontWeight.w900)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: _grupoSeleccionado == null
-              ? ListView(
-                  children: agrupados.keys.map((g) => ListTile(
-                    title: Text(g.toUpperCase(), style: const TextStyle(color: Colors.white)),
-                    onTap: () => setState(() => _grupoSeleccionado = g),
-                    trailing: const Icon(Icons.chevron_right, color: Color(0xFF444444)),
-                  )).toList(),
-                )
-              : ListView(
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.arrow_back, color: Color(0xFFE8FF00)),
-                      title: const Text('VOLVER', style: TextStyle(color: Color(0xFFE8FF00))),
-                      onTap: () => setState(() => _grupoSeleccionado = null),
-                    ),
-                    ...agrupados[_grupoSeleccionado]!.map((e) => CheckboxListTile(
-                      value: _seleccionados.contains(e.nombre),
-                      title: Text(e.nombre, style: const TextStyle(color: Colors.white)),
-                      onChanged: (v) {
-                        setState(() {
-                          if (v!) _seleccionados.add(e.nombre);
-                          else _seleccionados.remove(e.nombre);
-                        });
-                      },
-                      activeColor: const Color(0xFFE8FF00),
-                      checkColor: const Color(0xFF0A0A0A),
-                    )).toList(),
-                  ],
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ModalSeleccionarEjercicio extends StatefulWidget {
-  final Function(String) onSeleccionado;
-  const _ModalSeleccionarEjercicio({required this.onSeleccionado});
-
-  @override
-  State<_ModalSeleccionarEjercicio> createState() => _ModalSeleccionarEjercicioState();
-}
-
-class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> {
+  late final List<String> _seleccionados;
   String? _grupoSeleccionado;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  List<EjercicioMaestro> _ejerciciosMaestrosCompletos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _seleccionados = widget.seleccionadosIniciales != null ? List.from(widget.seleccionadosIniciales!) : [];
+    _cargarEjercicios();
+  }
+
+  Future<void> _cargarEjercicios() async {
+    final custom = await DatabaseHelper.instance.readAllEjerciciosMaestrosCustom();
+    final customList = custom.map((e) => EjercicioMaestro(
+      nombre: e['nombre'],
+      grupoMuscular: e['grupo_muscular'],
+    )).toList();
+    
+    setState(() {
+      _ejerciciosMaestrosCompletos = [...LISTA_EJERCICIOS_MAESTRA, ...customList];
+    });
+  }
 
   @override
   void dispose() {
@@ -1024,10 +977,14 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
               child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF555555), fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 if (nuevoNombre.trim().isNotEmpty) {
-                  widget.onSeleccionado(nuevoNombre.trim());
-                  Navigator.pop(context);
+                  await DatabaseHelper.instance.insertEjercicioMaestroCustom(nuevoNombre.trim(), grupoSeleccionado);
+                  setState(() {
+                    _seleccionados.add(nuevoNombre.trim());
+                  });
+                  _cargarEjercicios();
+                  if (mounted) Navigator.pop(context);
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -1046,126 +1003,459 @@ class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> 
   @override
   Widget build(BuildContext context) {
     final Map<String, List<EjercicioMaestro>> agrupados = {};
-    for (var e in LISTA_EJERCICIOS_MAESTRA) {
+    for (var e in _ejerciciosMaestrosCompletos) {
       agrupados.putIfAbsent(e.grupoMuscular, () => []).add(e);
     }
+    
+    // Sort exercises within groups
+    agrupados.forEach((key, value) {
+      value.sort((a, b) => a.nombre.compareTo(b.nombre));
+    });
 
     List<EjercicioMaestro> filtrados = [];
     if (_searchQuery.isNotEmpty) {
-      filtrados = LISTA_EJERCICIOS_MAESTRA
-          .where((e) => e.nombre.toLowerCase().contains(_searchQuery.toLowerCase()))
+      filtrados = _ejerciciosMaestrosCompletos
+          .where((e) {
+            final matches = e.nombre.toLowerCase().contains(_searchQuery.toLowerCase());
+            if (_grupoSeleccionado != null) {
+              return matches && e.grupoMuscular == _grupoSeleccionado;
+            }
+            return matches;
+          })
           .toList();
+      filtrados.sort((a, b) => a.nombre.compareTo(b.nombre));
     }
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-      decoration: const BoxDecoration(
-        color: Color(0xFF111111),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 24),
-              width: 36, height: 4,
-              decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF2A2A2A)),
-                  ),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'BUSCAR EJERCICIO...',
-                      hintStyle: const TextStyle(color: Color(0xFF555555), fontSize: 12, letterSpacing: 1.5),
-                      border: InputBorder.none,
-                      icon: Icon(Icons.search, color: const Color(0xFFE8FF00).withOpacity(0.5), size: 20),
-                    ),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(color: Color(0xFF111111), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        height: MediaQuery.of(context).size.height * 0.85,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.titulo != null)
+                        Text(widget.titulo!, style: const TextStyle(color: Color(0xFFE8FF00), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                      Text(_grupoSeleccionado ?? 'SELECCIONA EJERCICIOS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+                    ],
                   ),
                 ),
+                ElevatedButton(
+                  onPressed: () {
+                    widget.onFinalizar(_seleccionados);
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE8FF00)),
+                  child: Text('LISTO (${_seleccionados.length})', style: const TextStyle(color: Color(0xFF0A0A0A), fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // Buscador
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF2A2A2A)),
               ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: _mostrarDialogoNuevoEjercicio,
-                child: Container(
-                  height: 48, width: 48,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8FF00).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE8FF00).withOpacity(0.3)),
+              child: TextField(
+                controller: _searchCtrl,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: _grupoSeleccionado == null ? 'BUSCAR GLOBAL...' : 'BUSCAR EN ${_grupoSeleccionado!.toUpperCase()}...',
+                  hintStyle: const TextStyle(color: Color(0xFF555555), fontSize: 12, letterSpacing: 1.5),
+                  border: InputBorder.none,
+                  icon: Icon(Icons.search, color: const Color(0xFFE8FF00).withOpacity(0.5), size: 20),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Botón destacado para crear ejercicio
+            GestureDetector(
+              onTap: _mostrarDialogoNuevoEjercicio,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8FF00).withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE8FF00).withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.add_circle_outline, color: Color(0xFFE8FF00), size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '¿NO ESTÁ EN LA LISTA? CREAR EJERCICIO',
+                      style: TextStyle(color: Color(0xFFE8FF00), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: _searchQuery.isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_grupoSeleccionado != null)
+                          ListTile(
+                            leading: const Icon(Icons.arrow_back, color: Color(0xFFE8FF00)),
+                            title: const Text('VOLVER A GRUPOS', style: TextStyle(color: Color(0xFFE8FF00))),
+                            onTap: () => setState(() {
+                              _grupoSeleccionado = null;
+                              _searchQuery = '';
+                              _searchCtrl.clear();
+                            }),
+                          ),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: filtrados.length,
+                            itemBuilder: (context, i) => CheckboxListTile(
+                              value: _seleccionados.contains(filtrados[i].nombre),
+                              title: Text(filtrados[i].nombre, style: const TextStyle(color: Colors.white)),
+                              subtitle: _grupoSeleccionado == null 
+                                  ? Text(filtrados[i].grupoMuscular.toUpperCase(), style: const TextStyle(color: Color(0xFF444444), fontSize: 10))
+                                  : null,
+                              onChanged: (v) {
+                                setState(() {
+                                  if (v!) _seleccionados.add(filtrados[i].nombre);
+                                  else _seleccionados.remove(filtrados[i].nombre);
+                                });
+                              },
+                              activeColor: const Color(0xFFE8FF00),
+                              checkColor: const Color(0xFF0A0A0A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : _grupoSeleccionado == null
+                      ? ListView(
+                          children: (agrupados.keys.toList()..sort()).map((g) => ListTile(
+                            title: Text(g.toUpperCase(), style: const TextStyle(color: Colors.white)),
+                            onTap: () => setState(() => _grupoSeleccionado = g),
+                            trailing: const Icon(Icons.chevron_right, color: Color(0xFF444444)),
+                          )).toList(),
+                        )
+                      : Column(
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.arrow_back, color: Color(0xFFE8FF00)),
+                              title: const Text('VOLVER', style: TextStyle(color: Color(0xFFE8FF00))),
+                              onTap: () => setState(() => _grupoSeleccionado = null),
+                            ),
+                            Expanded(
+                              child: ListView(
+                                children: agrupados[_grupoSeleccionado]!.map((e) => CheckboxListTile(
+                                  value: _seleccionados.contains(e.nombre),
+                                  title: Text(e.nombre, style: const TextStyle(color: Colors.white)),
+                                  onChanged: (v) {
+                                    setState(() {
+                                      if (v!) _seleccionados.add(e.nombre);
+                                      else _seleccionados.remove(e.nombre);
+                                    });
+                                  },
+                                  activeColor: const Color(0xFFE8FF00),
+                                  checkColor: const Color(0xFF0A0A0A),
+                                )).toList(),
+                              ),
+                            ),
+                          ],
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModalSeleccionarEjercicio extends StatefulWidget {
+  final Function(String) onSeleccionado;
+  const _ModalSeleccionarEjercicio({required this.onSeleccionado});
+
+  @override
+  State<_ModalSeleccionarEjercicio> createState() => _ModalSeleccionarEjercicioState();
+}
+
+class _ModalSeleccionarEjercicioState extends State<_ModalSeleccionarEjercicio> {
+  String? _grupoSeleccionado;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  List<EjercicioMaestro> _ejerciciosMaestrosCompletos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarEjercicios();
+  }
+
+  Future<void> _cargarEjercicios() async {
+    final custom = await DatabaseHelper.instance.readAllEjerciciosMaestrosCustom();
+    final customList = custom.map((e) => EjercicioMaestro(
+      nombre: e['nombre'],
+      grupoMuscular: e['grupo_muscular'],
+    )).toList();
+    
+    setState(() {
+      _ejerciciosMaestrosCompletos = [...LISTA_EJERCICIOS_MAESTRA, ...customList];
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _mostrarDialogoNuevoEjercicio() {
+    String nuevoNombre = '';
+    String grupoSeleccionado = 'Pecho';
+    final grupos = ['Pecho', 'Espalda', 'Hombro', 'Tríceps', 'Bíceps', 'Pierna', 'Abs'];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF111111),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFF1E1E1E))),
+          title: const Text('NUEVO EJERCICIO', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                onChanged: (v) => nuevoNombre = v,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Nombre del ejercicio...',
+                  hintStyle: const TextStyle(color: Color(0xFF444444)),
+                  filled: true,
+                  fillColor: const Color(0xFF0A0A0A),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text('GRUPO MUSCULAR', style: TextStyle(color: Color(0xFF888888), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A0A0A),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: grupoSeleccionado,
+                    dropdownColor: const Color(0xFF111111),
+                    isExpanded: true,
+                    style: const TextStyle(color: Colors.white),
+                    items: grupos.map((g) => DropdownMenuItem(value: g, child: Text(g.toUpperCase(), style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) => setDialogState(() => grupoSeleccionado = v!),
                   ),
-                  child: const Icon(Icons.add, color: Color(0xFFE8FF00), size: 24),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          if (_searchQuery.isEmpty) ...[
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCELAR', style: TextStyle(color: Color(0xFF555555), fontWeight: FontWeight.bold)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nuevoNombre.trim().isNotEmpty) {
+                  await DatabaseHelper.instance.insertEjercicioMaestroCustom(nuevoNombre.trim(), grupoSeleccionado);
+                  widget.onSeleccionado(nuevoNombre.trim());
+                  if (mounted) Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE8FF00),
+                foregroundColor: const Color(0xFF0A0A0A),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('AGREGAR', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Map<String, List<EjercicioMaestro>> agrupados = {};
+    for (var e in _ejerciciosMaestrosCompletos) {
+      agrupados.putIfAbsent(e.grupoMuscular, () => []).add(e);
+    }
+    
+    // Sort exercises within groups
+    agrupados.forEach((key, value) {
+      value.sort((a, b) => a.nombre.compareTo(b.nombre));
+    });
+
+    List<EjercicioMaestro> filtrados = [];
+    if (_searchQuery.isNotEmpty) {
+      filtrados = _ejerciciosMaestrosCompletos
+          .where((e) {
+            final matches = e.nombre.toLowerCase().contains(_searchQuery.toLowerCase());
+            if (_grupoSeleccionado != null) {
+              return matches && e.grupoMuscular == _grupoSeleccionado;
+            }
+            return matches;
+          })
+          .toList();
+      filtrados.sort((a, b) => a.nombre.compareTo(b.nombre));
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+        decoration: const BoxDecoration(
+          color: Color(0xFF111111),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 24),
+                width: 36, height: 4,
+                decoration: BoxDecoration(color: const Color(0xFF2A2A2A), borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
             Row(
               children: [
-                if (_grupoSeleccionado != null)
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFE8FF00), size: 18),
-                    onPressed: () => setState(() => _grupoSeleccionado = null),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF2A2A2A)),
+                    ),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: _grupoSeleccionado == null ? 'BUSCAR GLOBAL...' : 'BUSCAR EN ${_grupoSeleccionado!.toUpperCase()}...',
+                        hintStyle: const TextStyle(color: Color(0xFF555555), fontSize: 12, letterSpacing: 1.5),
+                        border: InputBorder.none,
+                        icon: Icon(Icons.search, color: const Color(0xFFE8FF00).withOpacity(0.5), size: 20),
+                      ),
+                    ),
                   ),
-                Text(
-                  _grupoSeleccionado == null ? 'GRUPO MUSCULAR' : _grupoSeleccionado!.toUpperCase(),
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: _mostrarDialogoNuevoEjercicio,
+                  child: Container(
+                    height: 48, width: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8FF00).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE8FF00).withOpacity(0.3)),
+                    ),
+                    child: const Icon(Icons.add, color: Color(0xFFE8FF00), size: 24),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-          ],
-          Flexible(
-            child: _searchQuery.isNotEmpty
-                ? ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: filtrados.length,
-                    itemBuilder: (context, i) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(filtrados[i].nombre, style: const TextStyle(color: Color(0xFFCCCCCC))),
-                      onTap: () {
-                        widget.onSeleccionado(filtrados[i].nombre);
-                        Navigator.pop(context);
-                      },
+            const SizedBox(height: 24),
+            Expanded(
+              child: _searchQuery.isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_grupoSeleccionado != null)
+                          ListTile(
+                            leading: const Icon(Icons.arrow_back, color: Color(0xFFE8FF00)),
+                            title: const Text('VOLVER A GRUPOS', style: TextStyle(color: Color(0xFFE8FF00))),
+                            onTap: () => setState(() {
+                              _grupoSeleccionado = null;
+                              _searchQuery = '';
+                              _searchCtrl.clear();
+                            }),
+                          ),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: filtrados.length,
+                            itemBuilder: (context, i) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(filtrados[i].nombre, style: const TextStyle(color: Color(0xFFCCCCCC))),
+                              subtitle: _grupoSeleccionado == null 
+                                  ? Text(filtrados[i].grupoMuscular.toUpperCase(), style: const TextStyle(color: Color(0xFF444444), fontSize: 10))
+                                  : null,
+                              onTap: () {
+                                widget.onSeleccionado(filtrados[i].nombre);
+                                Navigator.pop(context);
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (_grupoSeleccionado != null)
+                              IconButton(
+                                icon: const Icon(Icons.arrow_back_ios, color: Color(0xFFE8FF00), size: 18),
+                                onPressed: () => setState(() => _grupoSeleccionado = null),
+                              ),
+                            Text(
+                              _grupoSeleccionado == null ? 'GRUPO MUSCULAR' : _grupoSeleccionado!.toUpperCase(),
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: _grupoSeleccionado == null
+                              ? ListView(
+                                  children: (agrupados.keys.toList()..sort()).map((g) => ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(g.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    trailing: const Icon(Icons.chevron_right, color: Color(0xFF333333)),
+                                    onTap: () => setState(() => _grupoSeleccionado = g),
+                                  )).toList(),
+                                )
+                              : ListView(
+                                  children: (agrupados[_grupoSeleccionado] ?? []).map((e) => ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(e.nombre, style: const TextStyle(color: Color(0xFFCCCCCC))),
+                                    onTap: () {
+                                      widget.onSeleccionado(e.nombre);
+                                      Navigator.pop(context);
+                                    },
+                                  )).toList(),
+                                ),
+                        ),
+                      ],
                     ),
-                  )
-                : _grupoSeleccionado == null
-                    ? ListView(
-                        shrinkWrap: true,
-                        children: agrupados.keys.map((g) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(g.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          trailing: const Icon(Icons.chevron_right, color: Color(0xFF333333)),
-                          onTap: () => setState(() => _grupoSeleccionado = g),
-                        )).toList(),
-                      )
-                    : ListView(
-                        shrinkWrap: true,
-                        children: agrupados[_grupoSeleccionado]!.map((e) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(e.nombre, style: const TextStyle(color: Color(0xFFCCCCCC))),
-                          onTap: () {
-                            widget.onSeleccionado(e.nombre);
-                            Navigator.pop(context);
-                          },
-                        )).toList(),
-                      ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
