@@ -264,6 +264,14 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
     await DatabaseHelper.instance.update(actualizado);
   }
 
+  void _finalizarSesion() async {
+    await _guardar();
+    if (mounted) {
+      Navigator.pop(context, true);
+    }
+    HapticFeedback.heavyImpact();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -286,7 +294,7 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
         body: Stack(
           children: [
             SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 180),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -587,64 +595,99 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
               ),
             ),
             
-            // Cronómetro Flotante
+            // Botón de Guardar y Cronómetro (Separados verticalmente)
             Positioned(
               left: 24,
               right: 24,
               bottom: 24,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE8FF00).withOpacity(0.2)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.timer_outlined, color: Color(0xFFE8FF00), size: 20),
-                    const SizedBox(width: 12),
-                    Text(
-                      _formatTime(_seconds),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'monospace',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Botón de Guardar (Arriba)
+                  GestureDetector(
+                    onTap: _finalizarSesion,
+                    child: Container(
+                      height: 54,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8FF00),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'GUARDAR SESIÓN',
+                        style: TextStyle(
+                          color: Color(0xFF0A0A0A),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          letterSpacing: 2,
+                        ),
                       ),
                     ),
-                    const Spacer(),
-                    IconButton(
-                      icon: Icon(
-                        _timerRunning ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                        color: const Color(0xFFE8FF00),
-                        size: 32,
-                    ),
-                    onPressed: () {
-                      HapticFeedback.mediumImpact();
-                      _timerRunning ? _pauseTimer() : _startTimer();
-                    },
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh, color: Color(0xFF444444), size: 24),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      _stopTimer();
-                    },
+                  const SizedBox(height: 12),
+                  // Cronómetro (Abajo)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFE8FF00).withOpacity(0.1)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.timer_outlined, color: Color(0xFFE8FF00), size: 16),
+                        const SizedBox(width: 10),
+                        Text(
+                          _formatTime(_seconds),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            _timerRunning ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                            color: const Color(0xFFE8FF00),
+                            size: 28,
+                          ),
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            _timerRunning ? _pauseTimer() : _startTimer();
+                          },
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.refresh, color: Color(0xFF444444), size: 18),
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            _stopTimer();
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -661,10 +704,17 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
   }
 
   Widget _buildChart() {
+    if (_historial.isEmpty) return const SizedBox();
+    
+    final double minPeso = _historial.map((e) => e.peso).reduce((a, b) => a < b ? a : b);
+    final double maxPeso = _historial.map((e) => e.peso).reduce((a, b) => a > b ? a : b);
+    final double range = maxPeso - minPeso;
+    final double interval = range > 20 ? (range / 4).roundToDouble() : 5.0;
+
     return Container(
-      height: 200,
+      height: 220,
       width: double.infinity,
-      padding: const EdgeInsets.only(right: 20, left: 0, top: 10, bottom: 10),
+      padding: const EdgeInsets.fromLTRB(10, 20, 20, 10),
       decoration: BoxDecoration(
         color: const Color(0xFF111111),
         borderRadius: BorderRadius.circular(16),
@@ -675,6 +725,7 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
+            horizontalInterval: interval,
             getDrawingHorizontalLine: (value) => FlLine(color: const Color(0xFF1E1E1E), strokeWidth: 1),
           ),
           titlesData: FlTitlesData(
@@ -689,14 +740,19 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
                 getTitlesWidget: (value, meta) {
                   int index = value.toInt();
                   if (index < 0 || index >= _historial.length) return const SizedBox();
-                  if (_historial.length > 5 && index % (_historial.length ~/ 3) != 0) return const SizedBox();
                   
-                  final date = DateTime.fromMillisecondsSinceEpoch(int.parse(_historial[index].id));
+                  if (_historial.length > 5) {
+                    if (index != 0 && index != _historial.length - 1 && index % (_historial.length ~/ 3) != 0) {
+                      return const SizedBox();
+                    }
+                  }
+                  
+                  final date = _historial[index].fecha;
                   return Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
-                      '${date.day}/${date.month}',
-                      style: const TextStyle(color: Color(0xFF444444), fontSize: 10, fontWeight: FontWeight.bold),
+                      '${date.day}/${_mesesCortos[date.month-1]}',
+                      style: const TextStyle(color: Color(0xFF444444), fontSize: 9, fontWeight: FontWeight.bold),
                     ),
                   );
                 },
@@ -705,7 +761,7 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                interval: 20,
+                interval: interval,
                 getTitlesWidget: (value, meta) {
                   return Text(
                     value.toInt().toString(),
@@ -719,8 +775,8 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
           borderData: FlBorderData(show: false),
           minX: 0,
           maxX: (_historial.length - 1).toDouble(),
-          minY: _historial.isEmpty ? 0 : _historial.map((e) => e.peso).reduce((a, b) => a < b ? a : b) - 10,
-          maxY: _historial.isEmpty ? 100 : _historial.map((e) => e.peso).reduce((a, b) => a > b ? a : b) + 10,
+          minY: (minPeso - 5).clamp(0, double.infinity),
+          maxY: maxPeso + 5,
           lineBarsData: [
             LineChartBarData(
               spots: _historial.asMap().entries.map((e) {
@@ -728,12 +784,12 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
               }).toList(),
               isCurved: true,
               color: const Color(0xFFE8FF00),
-              barWidth: 4,
+              barWidth: 3,
               isStrokeCapRound: true,
               dotData: FlDotData(
                 show: true,
                 getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-                  radius: 4,
+                  radius: 3,
                   color: const Color(0xFF0A0A0A),
                   strokeWidth: 2,
                   strokeColor: const Color(0xFFE8FF00),
@@ -741,7 +797,14 @@ class _PantallaDetalleEjercicioState extends State<PantallaDetalleEjercicio> {
               ),
               belowBarData: BarAreaData(
                 show: true,
-                color: const Color(0xFFE8FF00).withOpacity(0.1),
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFFE8FF00).withOpacity(0.2),
+                    const Color(0xFFE8FF00).withOpacity(0.0),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
               ),
             ),
           ],
